@@ -1,0 +1,7 @@
+3rdparty/
+__MACOSX/
+__pycache__/
+results/
+*.png
+*.zip
+.DS_Store
