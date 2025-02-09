@@ -44,16 +44,3 @@ To visualize communication data from a specific agent and episode, use the follo
 python visualization.py --selected_agent 1 --episode 10 --time_step 100
 ```
 Replace `1`, `10`, and `100` with the desired agent ID, episode number, and time step respectively. The visualization script is located in `src/visual`.
-
-## Citation
-Please cite our work if you find PyMARL_LLM useful in your research:
-```bibtex
-@article{hu2021rethinking,
-      title={Rethinking the Implementation Tricks and Monotonicity Constraint in Cooperative Multi-Agent Reinforcement Learning}, 
-      author={Jian Hu and Siyang Jiang and Seth Austin Harding and Haibin Wu and Shih-wei Liao},
-      year={2021},
-      eprint={2102.03479},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
-}
-```
