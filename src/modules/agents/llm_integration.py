@@ -1,18 +1,15 @@
-# 新建文件：llm_integration.py
 import os
 from typing import Optional
 import logging
 
-# 初始化日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LLMIntegration:
-    """统一LLM调用接口"""
     
     def __init__(self):
         self.model_registry = {
-            # OpenAI 系列
+            # OpenAI series
             "GPT-4": {
                 "provider": "openai",
                 "config": {
@@ -22,7 +19,7 @@ class LLMIntegration:
                 }
             },
             
-            # 阿里系列
+            # sli series
             "Qwen2.5-72b": {
                 "provider": "dashscope",
                 "config": {
@@ -38,7 +35,7 @@ class LLMIntegration:
                 }
             },
             
-            # Meta系列
+            # Meta series
             "llama3-8b": {
                 "provider": "ollama",
                 "config": {"model": "llama3:8b"}
@@ -48,7 +45,7 @@ class LLMIntegration:
                 "config": {"model": "llama3:70b"}
             },
             
-            # 智谱AI
+            # zhipuAI
             "GLM-4": {
                 "provider": "zhipuai",
                 "config": {
