@@ -17,7 +17,7 @@ import random
 from envs.starcraft.smac_maps import get_map_params
 from ast import literal_eval
 from math import sqrt
-
+from llm_integration import LLMIntegration
 
 class NRNNAgent(nn.Module):
     def __init__(self, input_shape, args):
@@ -219,7 +219,7 @@ class NRNNAgent(nn.Module):
                     ally_i += f", Shield: {shield_a:.2f}"
                 if unit_type_a == "medivac":
                     ally_i += f", Energy: {energy_a:.2f}"
-                    medivac_indices.append(i)  # 记录 medivac 的索引
+                    medivac_indices.append(i)
                 else:
                     ally_i += f", Cooldown: {energy_a:.2f}"
                 ally_list.append(ally_i)
@@ -230,7 +230,7 @@ class NRNNAgent(nn.Module):
 
             # Enemy Information
             enemy_list = ["\n\n### Enemy Status"]
-            enemy_positions = []  # 存储 enemy 的位置
+            enemy_positions = [] 
             for i in range(n_enemies):
                 suffix = ['st', 'nd', 'rd'][i % 10] if 0 <= i <= 2 or (i >= 20 and 0 <= i % 10 <= 2) else 'th'
 
@@ -278,11 +278,6 @@ class NRNNAgent(nn.Module):
 
             action_instructions += f"- 'Not Available (N/A)' indicates that action is not selectable.\n"
 
-            # action_instructions += f"- **Resource Management**: Medivacs should prioritize healing allies with low health or shields.\n"
-
-            # action_instructions += f"- Strong attackers should target high-value or heavily armored enemies."
-
-            # 初始化基础动作列表
             base_actions = [
                 "No-operation (if dead)",
                 "Stay stationary",
@@ -295,9 +290,8 @@ class NRNNAgent(nn.Module):
             obs_ally_dim_start = self.n_enemies * obs_e_enemy_dim + 4
 
             if map_type == "MMM":
-                # 构建 medivac 的动作向量
                 if medivac_indices:
-                    n_allies = n_agents - len(medivac_indices)  # medivac 不会治疗自己
+                    n_allies = n_agents - len(medivac_indices)  
                     medivac_actions = base_actions.copy()
                     for i in range(min(n_allies, n_enemies)):
                         distance_i = 9 * obs[medivac_indices[0]][obs_e_ally_dim * i + obs_ally_dim_start + 1]
@@ -314,7 +308,6 @@ class NRNNAgent(nn.Module):
                 non_medivac_actions = base_actions.copy()
                 max_action_length = len(base_actions)
 
-                # 为每个 ally 生成动作向量
                 for i in range(n_agents):
                     suffix = ['st', 'nd', 'rd'][i % 10] if 0 <= i <= 2 or (i >= 20 and 0 <= i % 10 <= 2) else 'th'
                     agent_i_type = agents_type_list[i]
@@ -324,7 +317,6 @@ class NRNNAgent(nn.Module):
                         continue
 
                     available_actions = base_actions.copy()
-                    # 检查哪些敌人在攻击范围内
                     for j in range(n_enemies):
                         NA = "Not Available (N/A)"
 
@@ -337,8 +329,7 @@ class NRNNAgent(nn.Module):
                             attack_or_not = NA
 
                         available_actions.append(attack_or_not)
-
-                    # 如果是 medivac，使用 medivac_actions
+                        
                     if i in medivac_indices:
                         action_instructions += f"\n  - **For the {i + 1}{suffix} Medivac Ally:**\n"
                         for idx, action in enumerate(medivac_actions, start=1):
@@ -348,10 +339,8 @@ class NRNNAgent(nn.Module):
                         for idx, action in enumerate(available_actions, start=1):
                             action_instructions += f"    - **{idx}. {action}**\n"
 
-                    # 更新最大动作长度
                     max_action_length = max(max_action_length, len(available_actions))
 
-                # 确保所有动作向量的长度一致
                 if len(medivac_actions) < max_action_length:
                     medivac_actions.extend(["Not Available (N/A)"] * (max_action_length - len(medivac_actions)))
                 for i in range(n_agents):
@@ -376,20 +365,15 @@ class NRNNAgent(nn.Module):
                         if len(available_actions) < max_action_length:
                             available_actions.extend(["Not Available (N/A)"] * (max_action_length - len(available_actions)))
 
-
-
             else:
-                # 如果不是 MMM 地图，只生成非 medivac 的动作向量
                 non_medivac_actions = base_actions.copy()
                 max_action_length = len(base_actions)
 
-                # 为每个 ally 生成动作向量
                 for i in range(n_agents):
                     suffix = ['st', 'nd', 'rd'][i % 10] if 0 <= i <= 2 or (i >= 20 and 0 <= i % 10 <= 2) else 'th'
                     available_actions = base_actions.copy()
                     agent_i_type = agents_type_list[i]
 
-                    # 检查哪些敌人在攻击范围内
                     for j in range(n_enemies):
                         NA = "Not Available (N/A)"
                         if agent_i_type and agent_i_type != "medivacs":
@@ -405,10 +389,8 @@ class NRNNAgent(nn.Module):
                     for idx, action in enumerate(available_actions, start=1):
                         action_instructions += f"    - **{idx}. {action}**\n"
 
-                    # 更新最大动作长度
                     max_action_length = max(max_action_length, len(available_actions))
 
-                # 确保所有动作向量的长度一致
                 for i in range(n_agents):
                     available_actions = non_medivac_actions.copy()
                     agent_i_type = agents_type_list[i]
@@ -456,54 +438,16 @@ class NRNNAgent(nn.Module):
         system_prompt = state_plus_prompt[1]
         user_prompt = state_plus_prompt[2]
         
-        # print(f"state={state}")
         print("system prompt=\n", system_prompt)
         print("user prompt=\n", user_prompt)
 
         try:
-            # GPT-4
-            client = OpenAI(api_key="sk-41gBHOOMJVZflE9o83841661D400443eA0E88b108aBbDbA1",
-                            base_url="https://aihubmix.com/v1")
-            use_model = "gpt-4"
-            completion = client.chat.completions.create(
-                model=use_model,
-                messages=[{'role': 'system', 'content': system_prompt},
-                          {'role': 'user', 'content': user_prompt}]
+            
+            answer = self.llm_client.get_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_name=self.args.llm
             )
-
-            # client = ZhipuAI(api_key="33823cbbedad4d0e31d68c2422058328.60GZj5Ak32LJJ92C")
-            # use_model = "glm-4-plus"
-            # completion = client.chat.completions.create(
-            #     model=use_model,
-            #     messages=[{'role': 'system', 'content': system_prompt},
-            #               {'role': 'user', 'content': user_prompt}]
-            # )
-
-            #Qwen
-            # client = OpenAI(api_key="sk-2f00443a13e14e2fbb74b28364c80870",
-            #                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
-            # use_model = "llama3.3-70b-instruct"
-            # completion = client.chat.completions.create(
-            #     model=use_model,
-            #     messages=[{'role': 'system', 'content': system_prompt},
-            #               {'role': 'user', 'content': user_prompt}]
-            # )
-
-            # use_model = "yi-large"
-            # completion = dashscope.Generation.call(
-            #     model=use_model,
-            #     messages=[{'role': 'system', 'content': system_prompt},
-            #               {'role': 'user', 'content': user_prompt}]
-            # )
-
-            # print(completion.message)
-
-            # answer = completion.choices[0].message.content
-            # answer = completion.message
-            # print("\n\n\n\n\n", answer)
-
-            answer = completion.choices[0].message.content
-
 
             print("\n## Answer = ", answer)
 
