@@ -18,7 +18,7 @@ from envs.starcraft.smac_maps import get_map_params
 from ast import literal_eval
 from math import sqrt
 from ollama import chat
-
+from llm_integration import LLMIntegration
 
 class NRNNAgent(nn.Module):
     def __init__(self, input_shape, args):
@@ -41,13 +41,13 @@ class NRNNAgent(nn.Module):
 
         self.unit_type_bits = map_params["unit_type_bits"]
 
-        # self.action_selector = EpsilonGreedyActionSelector(args)
-
         self.args = args
 
         self.fc1 = nn.Linear(input_shape, args.rnn_hidden_dim)
         self.rnn = nn.GRUCell(args.rnn_hidden_dim, args.rnn_hidden_dim)
         self.fc2 = nn.Linear(args.rnn_hidden_dim, args.n_actions)
+
+        self.llm_client = LLMIntegration()
 
         if getattr(args, "use_layer_norm", False):
             self.layer_norm = LayerNorm(args.rnn_hidden_dim)
@@ -68,22 +68,10 @@ class NRNNAgent(nn.Module):
         inputs = inputs.view(-1, e)
         ava_actions = ava_actions.view(-1, e1)
 
-        # x = F.relu(self.fc1(inputs), inplace=True)
-        # h_in = hidden_state.reshape(-1, self.args.rnn_hidden_dim)
-        # hh = self.rnn(x, h_in)
-
-        # if getattr(self.args, "use_layer_norm", False):
-        #     q = self.fc2(self.layer_norm(hh))
-        # else:
-        #     q = self.fc2(hh)
-
         coord = coord.reshape(-1, 8)
         q_LLM = self.inputs2action(inputs, ava_actions, coord).to(self.args.device)
 
-        print("\n ## out_put_Q = ", q_LLM)
-
         return q_LLM.view(b, a, -1)
-        # return q.view(b, a, -1), hh.view(b, a, -1), q_LLM.view(b, a, -1)
 
     def code2prompt(self, input, ava_action, coord_agent):
         n_agents = self.n_agents
@@ -331,38 +319,13 @@ class NRNNAgent(nn.Module):
 
             print("\n ## prompt = ", system_prompt + user_prompt)
 
-            
             try:
-                #response = chat(
-                #    model="qwen2.5:32b",
-                #    messages=[{'role': 'system', 'content': system_prompt},
-                #              {'role': 'user', 'content': user_prompt}]
-                #)
-                #answer = response["message"]["content"]
 
-                # client = OpenAI(api_key="sk-41gBHOOMJVZflE9o83841661D400443eA0E88b108aBbDbA1",
-                #                 base_url="https://aihubmix.com/v1")
-                # use_model = "gpt-4"
-                #
-                # completion = client.chat.completions.create(
-                #     model=use_model,
-                #     messages=[{'role': 'system', 'content': system_prompt},
-                #               {'role': 'user', 'content': user_prompt}]
-                # )
-
-                client = OpenAI(api_key="sk-a45a4e7df8e54d0aa7b6b864c99a31a7",
-                                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
-                use_model = "qwen2.5-72b-instruct"
-                completion = client.chat.completions.create(
-                    model=use_model,
-                    messages=[{'role': 'system', 'content': system_prompt},
-                              {'role': 'user', 'content': user_prompt}]
+                answer = self.llm_client.get_response(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    model_name=self.args.llm
                 )
-                answer = completion.choices[0].message.content
-
-                print(answer)
-
-
 
                 # print("\n ## 3.answer = ", answer)
 
@@ -386,8 +349,6 @@ class NRNNAgent(nn.Module):
         ba, e = inputs.size()
 
         q_LLM = th.zeros(ba, self.args.n_actions).to(self.args.device)
-
-        # print(ba, epsilon, int(ba * epsilon * 0.1))
 
         # num_LLM = math.ceil(ba * epsilon * 0.4)
         # indices = th.randperm(ba)[:num_LLM]
