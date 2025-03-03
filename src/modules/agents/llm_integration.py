@@ -19,7 +19,7 @@ class LLMIntegration:
                 }
             },
             
-            # sli series
+            # ali series
             "Qwen2.5-72b": {
                 "provider": "dashscope",
                 "config": {
