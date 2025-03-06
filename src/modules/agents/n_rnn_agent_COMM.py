@@ -56,12 +56,28 @@ class NRNNAgent(nn.Module):
         std = th.exp(0.5 * logvar)
         eps = th.randn_like(std)
         weight = (mu + std * eps).squeeze(-1).view(b,-1)
+
+        '''		
+		# Robust Testing (Test_mode = True)
+		mask_percentile = 0.3
+
+        # randomly disconnection
+        mask_agent = random.sample(list(range(a)), math.ceil(a * 0.3))
+        weight[:,mask_agent] = 0
+
+        # top-k disconnection
+		k = np.floor(a*mask_percentile)
+        _, indices = torch.topk(weight.view(b, -1), k, dim=1)
+		mask = torch.ones_like(weight.view(b, -1))
+		mask.scatter_(1, indices, 0)
+        weight *= mask.view(b, a, 1)
+
+		'''
         
         weight_copy = weight.unsqueeze(1).repeat(1, a, 1)
 
         visible_weight = th.mul(weight_copy, visible_matrix)
-
-        # print(visible_weight)
+        
         comm_rate = 0.7
         floor_k_indices = th.topk(visible_weight, k=math.ceil((a-1) * (1-comm_rate)), dim=2, largest=False)[1]
 
