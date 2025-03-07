@@ -10,6 +10,10 @@ Open-source code for integrating Large Language Models (LLMs) and communication 
 
 ## Installation instructions
 
+Prerequisites
+- Anaconda 3 / Miniconda 3
+- Linux environment
+
 Install Python packages
 ```shell
 # require Anaconda 3 or Miniconda 3
