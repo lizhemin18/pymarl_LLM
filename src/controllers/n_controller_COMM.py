@@ -28,12 +28,6 @@ class NMAC(BasicMAC):
         avail_actions = ep_batch["avail_actions"][:, t]
 
         visible_matrix = ep_batch["visible_matrix"][:, t]
-        # print(adjacent_t.shape)
-        # start = time.time()
-        # print(t)
         agent_outs, self.hidden_states, self.hidden_states_2 = self.agent(agent_inputs, visible_matrix, self.hidden_states, self.hidden_states_2, test_mode = test_mode)
-        # end = time.time()
-        # spend = end - start
-        # print(spend)
         
         return agent_outs
