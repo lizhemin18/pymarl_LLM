@@ -1,0 +1,263 @@
+import torch as th
+import re
+from math import sqrt
+from ast import literal_eval
+
+class PromptGenerator:
+    def __init__(self, config):
+        # init
+        self.map_name = config["map_name"]
+        self.map_params = config["map_params"]
+        self.agents_attr = config["agents_attr"]
+        
+        # config -- smac_maps
+        self.n_agents = self.map_params["n_agents"]
+        self.n_enemies = self.map_params["n_enemies"]
+        self.agents = self.map_params["agents"]
+        self.enemies = self.map_params["enemies"]
+        self.all_agents_type = self.map_params["all_agents_type"]
+        self._agent_race = self.map_params["a_race"]
+        self._bot_race = self.map_params["b_race"]
+        self.unit_type_bits = self.map_params["unit_type_bits"]
+        self.map_type = self.map_params["map_type"]
+        self.args = config["args"]
+        self.attack_range = 6  
+
+    def generate_prompts(self, obs, input_tensor, coord_agent):
+        state = self._check_agent_status(input_tensor)
+        if state == "all_dead":
+            return state, None, None
+
+        system_prompt = self._build_system_prompt(coord_agent)
+        user_prompt = self._build_user_prompt(obs, input_tensor, coord_agent)
+        return state, system_prompt, user_prompt
+
+
+    # system prompt
+    def _build_system_prompt(self, coord_agent):
+        # coordination
+        max_dis_x = coord_agent[6].item()
+        max_dis_y = coord_agent[7].item()
+        map_x = coord_agent[2].item()
+        map_y = coord_agent[3].item()
+        center_x = map_x / 2
+        center_y = map_y / 2
+    
+        # Part 1: map
+        part_1 = f"""### Map and Objective
+    - **Map**: '{self.map_name}' - A square map with {map_x} units by {map_y} units
+    - **Teams**: Allies (West) vs Enemies (East)
+    - **Allies Composition**: {self._format_composition(self.agents)}
+    - **Enemies Composition**: {self._format_composition(self.enemies)}
+    - **Objective**: Coordinate to eliminate enemy agents efficiently, ensuring allies don't waste attacks on enemies that can be defeated by fewer attacks. Prioritize targets based on threat level or proximity."""
+    
+        # Part 2: unit
+        part_2 = "\n### Unit Descriptions" + self._generate_unit_descriptions()
+    
+        # Part 3: game
+        part_3 = f"""
+    ### Game Mechanics
+    - Observation Range: 9 units from agent's position
+    - Attack Range: {self.attack_range} units for targeting live enemies
+    - Movement: Agents can move exactly 2 units in four cardinal directions per step
+    - Coordinate System: Origin at map center ({center_x}, {center_y})
+    - Shields: Protoss units have shields that must be depleted before health damage"""
+    
+        # Part 4: coordination
+        part_4 = """
+    ### Coordination Guidelines
+    - Target Allocation: Assign minimal necessary allies per enemy
+    - Communication: Execute coordinated actions
+    - Efficiency: Maximize attack efficiency and minimize wasted shots"""
+    
+        # Part 5: format
+        move_east = [0]*self.args["n_actions"]
+        move_east[4] = 1
+        attack_1st = [0]*self.args["n_actions"]
+        attack_1st[6] = 1
+        
+        part_5 = f"""
+    ### Response Format
+    Each action should be a binary vector of length {self.args['n_actions']} with:
+    Example: {move_east} (Move east), {attack_1st} (Attack 1st enemy)"""
+    
+        if self.map_type == "MMM":
+            heal_1st = [0]*self.args["n_actions"]
+            heal_1st[6] = 1
+            part_5 += f"""
+    For Medivacs:
+    - {heal_1st}: Heal 1st ally
+    - Positions 7-10 correspond to healing actions"""
+    
+        return "\n".join([part_1, part_2, part_3, part_4, part_5])
+    
+    def _generate_unit_descriptions(self):
+        desc = []
+        for unit in self.all_agents_type:
+            props = self.agents_attr[unit]
+            text = f"- {unit[:-1]}: Health {props['maximal health']}"
+            
+            if 'shield' in props:
+                text += f", Shield {props['maximal shield']}"
+            if 'heal_amount' in props:
+                text += f", Heals {props['heal_amount']} per action"
+            
+            text += f", Damage {props['damage']}"
+            desc.append(text)
+        
+        if any(unit in ['stalkers', 'zealots', 'colossus'] for unit in self.all_agents_type):
+            desc.append("\nProtoss units must have shields depleted before health damage applies")
+        
+        return "\n".join(desc)
+    
+        # --------------------------
+        # user prompt
+        def _build_user_prompt(self, obs, input_tensor, coord_agent):
+        # Part 1: current state
+        header = "## Current Game State\n"
+        
+        # Part 2: ally
+        ally_section = self._build_ally_status(input_tensor, coord_agent)
+        
+        # Part 3: enemy
+        enemy_section = self._build_enemy_status(input_tensor, coord_agent)
+        
+        # Part 4: action
+        action_section = self._build_action_instructions(obs, input_tensor)
+        
+        return "\n".join([header, ally_section, enemy_section, action_section])
+    
+    def _build_ally_status(self, input_tensor, coord_agent):
+        entries = ["### Ally Status"]
+        e_ally_dim = int(coord_agent[4])
+        
+        for i in range(self.n_agents):
+            start_idx = i * e_ally_dim
+            ally_data = input_tensor[start_idx:start_idx+e_ally_dim]
+            
+            if th.sum(ally_data) == 0:
+                entries.append(f"- Ally {i+1}: Dead")
+                continue
+            
+            # unit type
+            if self.unit_type_bits > 0:
+                type_start = start_idx + (5 if self._agent_race == "P" else 4)
+                type_idx = th.nonzero(input_tensor[type_start:type_start+self.unit_type_bits]).item()
+                unit_type = list(self.agents.keys())[type_idx]
+            else:
+                unit_type = list(self.agents.keys())[0]
+            
+            # coordination
+            rel_x = round(coord_agent[6].item() * ally_data[2].item(), 2)
+            rel_y = round(coord_agent[7].item() * ally_data[3].item(), 2)
+            
+            # attribute
+            health = self.agents_attr[unit_type]["maximal health"] * ally_data[0]
+            entry = f"- Ally {i+1}: {unit_type[:-1]} at ({rel_x}, {rel_y}), Health: {health:.2f}"
+            
+            if self._agent_race == "P":
+                shield = self.agents_attr[unit_type]["maximal shield"] * ally_data[4]
+                entry += f", Shield: {shield:.2f}"
+            
+            if unit_type == "medivacs":
+                energy = ally_data[1]
+                entry += f", Energy: {energy:.2f}"
+            else:
+                cooldown = ally_data[1]
+                entry += f", Cooldown: {cooldown:.2f}"
+            
+            entries.append(entry)
+        
+        return "\n".join(entries)
+    
+    def _build_enemy_status(self, input_tensor, coord_agent):
+        entries = ["### Enemy Status"]
+        e_ally_dim = int(coord_agent[4])
+        e_enemy_dim = int(coord_agent[5])
+        
+        for i in range(self.n_enemies):
+            start_idx = self.n_agents * e_ally_dim + i * e_enemy_dim
+            enemy_data = input_tensor[start_idx:start_idx+e_enemy_dim]
+            
+            if th.sum(enemy_data) == 0:
+                entries.append(f"- Enemy {i+1}: Dead")
+                continue
+                
+            if self.unit_type_bits > 0:
+                type_start = start_idx + (4 if self._bot_race == "P" else 3)
+                type_idx = th.nonzero(input_tensor[type_start:type_start+self.unit_type_bits]).item()
+                unit_type = list(self.enemies.keys())[type_idx]
+            else:
+                unit_type = list(self.enemies.keys())[0]
+    
+            rel_x = round(coord_agent[6].item() * enemy_data[1].item(), 2)
+            rel_y = round(coord_agent[7].item() * enemy_data[2].item(), 2)
+    
+            health = self.agents_attr[unit_type]["maximal health"] * enemy_data[0]
+            entry = f"- Enemy {i+1}: {unit_type[:-1]} at ({rel_x}, {rel_y}), Health: {health:.2f}"
+            
+            if self._bot_race == "P":
+                shield = self.agents_attr[unit_type]["maximal shield"] * enemy_data[3]
+                entry += f", Shield: {shield:.2f}"
+            
+            entries.append(entry)
+        
+        return "\n".join(entries)
+    
+    def _build_action_instructions(self, obs, input_tensor):
+        base_actions = [
+            "No-operation (if dead)",
+            "Stay stationary", 
+            "Move north",
+            "Move south",
+            "Move east",
+            "Move west"
+        ]
+        
+        instructions = ["## Action Selection Instructions"]
+        
+        for i in range(self.n_agents):
+            agent_type = self._get_agent_type(i, input_tensor)
+            actions = base_actions.copy()
+            
+            # Attack
+            for j in range(self.n_enemies):
+                if agent_type != "medivacs" and obs[i][j*5+4] == 1:
+                    damage = self.agents_attr[agent_type]["damage"]
+                    actions.append(f"Attack enemy {j+1} ({damage} damage)")
+                else:
+                    actions.append("N/A")
+            
+            # Heal
+            if self.map_type == "MMM" and "medivac" in agent_type:
+                for k in range(self.n_agents):
+                    if k != i and self._can_heal(obs[i], k):
+                        actions.append(f"Heal ally {k+1}")
+            
+            instructions.append(f"### Agent {i+1} Actions:")
+            for idx, action in enumerate(actions):
+                instructions.append(f"{idx+1}. {action}")
+        
+        return "\n".join(instructions)
+
+    def _format_composition(self, composition_dict):
+        items = []
+        for unit, count in composition_dict.items():
+            unit_name = unit[:-1] if count == 1 else unit
+            items.append(f"{count} {unit_name}")
+        if len(items) > 1:
+            return ", ".join(items[:-1]) + f" and {items[-1]}"
+        return items[0]
+
+    def ordinal(self, n):
+        if 11 <= (n % 100) <= 13:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+        return f"{n}{suffix}"
+
+    def _check_agent_status(self, input_tensor):
+        e_ally_dim = int(input_tensor.size(0) / self.n_agents)
+        alive_mask = th.stack([th.sum(input_tensor[i*e_ally_dim:(i+1)*e_ally_dim]) > 0 
+                              for i in range(self.n_agents)])
+        return "all_dead" if not th.any(alive_mask) else "alive"
