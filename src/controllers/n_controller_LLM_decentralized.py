@@ -16,7 +16,6 @@ class NMAC(BasicMAC):
         avail_actions = ep_batch["avail_actions"][:, t_ep]
 
         # if t_env < 280 and test_mode == False:
-        #     # print(t_env)
         #     qvals = self.llmforward(ep_batch, t_ep, test_mode=test_mode)
         #     chosen_actions = self.action_selector.select_action(qvals[bs], avail_actions[bs], t_env, test_mode=True)
         #
