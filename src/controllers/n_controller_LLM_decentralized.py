@@ -44,14 +44,3 @@ class NMAC(BasicMAC):
         q_LLM = self.agent(agent_inputs, avail_actions, coord, llm, test_mode=False)
 
         return q_LLM
-
-    # def llmforward(self, ep_batch, t, test_mode=False):
-    #     if test_mode:
-    #         self.agent.eval()
-    #
-    #     coord = ep_batch["coord"][:, t]
-    #
-    #     agent_inputs = self._build_inputs(ep_batch, t)
-    #     agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states, coord, llm=True, test_mode=False)
-    #
-    #     return agent_outs
