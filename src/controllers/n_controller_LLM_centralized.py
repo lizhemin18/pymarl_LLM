@@ -20,7 +20,7 @@ class NMAC(BasicMAC):
         #     chosen_actions = self.action_selector.select_action(qvals[bs], avail_actions[bs], t_env, test_mode=True)
         #
         # else:
-
+        
         # qvals_, q_LLM = self.forward(ep_batch, t_ep, epsilon = False, llm=True, test_mode=test_mode)
 
 
@@ -44,14 +44,3 @@ class NMAC(BasicMAC):
         agent_outs, self.hidden_states, q_LLM = self.agent(agent_inputs, state, self.hidden_states, coord, llm, epsilon, test_mode=False)
 
         return agent_outs, q_LLM
-
-    # def llmforward(self, ep_batch, t, test_mode=False):
-    #     if test_mode:
-    #         self.agent.eval()
-    #
-    #     coord = ep_batch["coord"][:, t]
-    #
-    #     agent_inputs = self._build_inputs(ep_batch, t)
-    #     agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states, coord, llm=True, test_mode=False)
-    #
-    #     return agent_outs
