@@ -20,7 +20,6 @@ class NMAC(BasicMAC):
         #     chosen_actions = self.action_selector.select_action(qvals[bs], avail_actions[bs], t_env, test_mode=True)
         #
         # else:
-
         # qvals_, q_LLM = self.forward(ep_batch, t_ep, epsilon = False, llm=True, test_mode=test_mode)
 
         # epsilon = self.action_selector.select_action(avail_actions[bs], avail_actions[bs], avail_actions[bs], t_env,
